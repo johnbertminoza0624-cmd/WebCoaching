@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/primitives';
 import { DropdownSelect, type DropdownOption } from '@/components/ui/dropdown-select';
 import {
-  ROLES, ROLE_LABELS, ROLE_SCOPE, USERS, ELEVATED_ROLES, type Role, type AppUser,
+  ROLES, ROLE_LABELS, ROLE_SCOPE, USERS, ROSTER, ELEVATED_ROLES, type Role, type AppUser,
 } from '@/lib/mock-data';
 import { api } from '@/lib/api-client';
 import { useAuthedSession } from '@/lib/session';
@@ -45,6 +45,7 @@ function userEmail(name: string) {
  * Handles multi-wave TLs like "Wave 6 · Wave 8" → "Wave 6 · Wave 8".
  * Non-wave teams (QA pod, Care & Claims) return the full team string. */
 function extractWave(team: string): string {
+  if (!team || team === '—') return '—';
   if (!team.toLowerCase().startsWith('wave')) return team;
   // If format is "Wave N · SomeName" (supervisor name after ·), return just the wave part.
   const parts = team.split(' · ');
@@ -55,6 +56,7 @@ function extractWave(team: string): string {
 /** Resolve a supervisor's full name from a team string like "Wave 8 · Gerodias".
  * Looks up the last-name token against USERS. Returns '—' for TLs / non-wave staff. */
 function extractSupervisorName(team: string): string {
+  if (!team || team === '—') return '—';
   if (!team.toLowerCase().startsWith('wave')) return '—';
   const parts = team.split(' · ');
   const supervisorPart = parts.find((p) => !p.trim().toLowerCase().startsWith('wave'));
@@ -125,21 +127,75 @@ interface ApiUser {
   firstName: string; lastName: string;
   role: Role; status: string;
   accountId: string | null; teamId: string | null;
+  team?: {
+    id: string;
+    name: string;
+    wave: string | null;
+    lead?: { id: string; firstName: string; lastName: string } | null;
+  } | null;
+  leadsTeam?: Array<{ id: string; name: string; wave: string | null }>;
 }
-/** The page renders `AppUser`; the real email rides along with it. */
-type AdminUser = AppUser & { email: string };
+/** The page renders `AdminUser`; the real email, wave, and supervisor ride along with it. */
+type AdminUser = AppUser & {
+  email: string;
+  wave: string;
+  supervisor: string;
+};
 
-const toAppUser = (u: ApiUser): AdminUser => ({
-  email: u.email,
-  id: u.id,
-  name: `${u.firstName} ${u.lastName}`.trim(),
-  eid: u.eid ?? '—',
-  // Team names are not on the user row; the roster relationship supplies them.
-  team: '—',
-  role: u.role,
-  status: (u.status as AppUser['status']) ?? 'ACTIVE',
-  lastSignIn: '—',
-});
+const toAppUser = (u: ApiUser): AdminUser => {
+  const fullName = `${u.firstName} ${u.lastName}`.trim();
+
+  let wave = '—';
+  let supervisor = '—';
+
+  // 1. Direct team / leadsTeam relation from DB
+  if (u.team) {
+    wave = u.team.wave || extractWave(u.team.name);
+    if (u.team.lead) {
+      supervisor = `${u.team.lead.firstName} ${u.team.lead.lastName}`.trim();
+    }
+  } else if (u.leadsTeam && u.leadsTeam.length > 0) {
+    wave = u.leadsTeam.map((t) => t.wave || extractWave(t.name)).filter(Boolean).join(' · ');
+    supervisor = 'Self (Team Lead)';
+  } else if (u.role === 'OPS_TEAM_LEAD') {
+    supervisor = 'Self (Team Lead)';
+  }
+
+  // 2. Fallback to ROSTER lookup by EID or Name if not linked in DB
+  if (wave === '—' || supervisor === '—') {
+    const rosterMatch = ROSTER.find(
+      (r) => (u.eid && r.eid === u.eid) || r.name.toLowerCase() === fullName.toLowerCase(),
+    );
+    if (rosterMatch) {
+      if (wave === '—') wave = rosterMatch.wave;
+      if (supervisor === '—') supervisor = rosterMatch.supervisor;
+    }
+  }
+
+  // 3. Fallback to USERS / STAFF_USERS from directory
+  if (wave === '—' || supervisor === '—') {
+    const userMatch = USERS.find(
+      (m) => (u.eid && m.eid === u.eid) || m.name.toLowerCase() === fullName.toLowerCase(),
+    );
+    if (userMatch) {
+      if (wave === '—') wave = extractWave(userMatch.team);
+      if (supervisor === '—') supervisor = extractSupervisorName(userMatch.team);
+    }
+  }
+
+  return {
+    email: u.email,
+    id: u.id,
+    name: fullName,
+    eid: u.eid ?? '—',
+    team: wave,
+    wave,
+    supervisor,
+    role: u.role,
+    status: (u.status as AppUser['status']) ?? 'ACTIVE',
+    lastSignIn: '—',
+  };
+};
 
 export default function AdminPage() {
   const { user: me } = useAuthedSession();
@@ -173,7 +229,12 @@ export default function AdminPage() {
 
   const filtered = users.filter((u) =>
     (!roleFilter || u.role === roleFilter) &&
-    (!search || u.name.toLowerCase().includes(search.toLowerCase()) || u.eid.includes(search)));
+    (!search ||
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.eid.includes(search) ||
+      u.email.toLowerCase().includes(search.toLowerCase()) ||
+      u.wave.toLowerCase().includes(search.toLowerCase()) ||
+      u.supervisor.toLowerCase().includes(search.toLowerCase())));
 
   const PAGE_SIZE = 10;
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -317,8 +378,8 @@ export default function AdminPage() {
                   </Td>
                   <Td mono className="text-[13px]">{u.eid}</Td>
                   <Td nowrap className="text-[12.5px] text-muted-foreground">{u.email}</Td>
-                  <Td nowrap className="text-[12.5px] text-muted-foreground">{extractWave(u.team)}</Td>
-                  <Td nowrap className="text-[12.5px] text-muted-foreground">{extractSupervisorName(u.team)}</Td>
+                  <Td nowrap className="text-[12.5px] text-muted-foreground">{u.wave}</Td>
+                  <Td nowrap className="text-[12.5px] text-muted-foreground">{u.supervisor}</Td>
                   <Td>
                     <div className="min-w-[180px]">
                       <DropdownSelect options={roleOptions} value={u.role} disabled={self}
@@ -586,7 +647,8 @@ function UploadUsersModal({ existingUsers, onClose, onImport }: {
               existingUsers.map((u) => ({
                 name: u.name, eid: u.eid,
                 email: `${u.name.toLowerCase().replace(/ /g, '.')}@awr.com`,
-                wave: extractWave(u.team),
+                wave: (u as AdminUser).wave || extractWave(u.team),
+                supervisor: (u as AdminUser).supervisor || extractSupervisorName(u.team),
                 role: u.role, status: u.status, lastSignIn: u.lastSignIn,
               })),
               'users-export.xlsx',

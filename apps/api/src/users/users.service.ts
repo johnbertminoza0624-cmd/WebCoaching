@@ -39,6 +39,27 @@ const PUBLIC_FIELDS = {
   id: true, email: true, eid: true, firstName: true, lastName: true,
   role: true, status: true, accountId: true, teamId: true,
   mustChangePassword: true, lastLoginAt: true, createdAt: true,
+  team: {
+    select: {
+      id: true,
+      name: true,
+      wave: true,
+      lead: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
+  },
+  leadsTeam: {
+    select: {
+      id: true,
+      name: true,
+      wave: true,
+    },
+  },
 } satisfies Prisma.UserSelect;
 
 @Injectable()
