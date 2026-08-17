@@ -1,0 +1,433 @@
+/* =============================================================
+   Theme — "Google Remix Remix" by Sihab Hasan (21st.dev)
+   https://21st.dev/@sihabhasan154/themes/google-remix-remix-1784232304140
+   Imported verbatim except for the four corrections listed below.
+   Tailwind v4 + shadcn/ui token contract, OKLCH.
+   ============================================================= */
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* base — "Portail" aesthetic in the app's azure blue. Same shade structure
+     as the green set (matching lightness/positions), hue-rotated green→blue.
+     Only token VALUES changed; names are unchanged so every component works. */
+  --background: #F4F7FB;
+  --foreground: #1E2733;
+  --card: #FFFFFF;
+  --card-foreground: #1E2733;
+  --popover: #FFFFFF;
+  --popover-foreground: #1E2733;
+
+  /* brand
+     Was #2479CB, which put white-on-primary at 4.49:1 — under AA by a hair,
+     on the single most-used button in the app. Deepened just enough to clear
+     it (4.78:1) without shifting the hue. */
+  --primary: #2274C2;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EEF3F9;
+  --secondary-foreground: #1E2733;
+
+  /* hover / selected surfaces — soft blue */
+  --accent: #E7F0FA;
+  --accent-foreground: #175C99;
+
+  /* muted — table hover, segmented controls, readonly fields
+     Was #7C8592: 3.73:1 on white, 3.47:1 on the page, 3.35:1 on --muted. This
+     token carries nearly all the app's secondary text — every table header,
+     every card subtitle, every hint — so it was the largest accessibility
+     defect in the theme. The dark palette was already fine (5.4–6.2:1); only
+     light was untuned. */
+  --muted: #EEF3F9;
+  --muted-foreground: #626C7A;
+
+  /* state */
+  --destructive: oklch(0.578 0.206 29.013);
+  --destructive-foreground: oklch(1 0 0);
+
+  /* borders & inputs */
+  --border: #E4E9F0;
+  --input: #D4DEEA;
+
+  /* keyboard focus ring */
+  --ring: #2274C2;
+
+  /* CORRECTION 4 — the theme's chart ramp cannot serve as a categorical scale:
+     in light mode `--chart-3` (#fbbc05) sits at 1.66:1 on white, and in dark
+     mode chart-2/chart-3 are ΔE 3.5 apart under tritanopia — indistinguishable.
+     The Google hues are kept for single-series and status use; the three
+     critical-error categories below are re-stepped and validated (all six
+     checks pass, all-pairs, both modes). */
+  --chart-1: oklch(0.456 0.172 260.365);
+  --chart-2: oklch(0.648 0.16 148.495);
+  --chart-3: oklch(0.83 0.17 83.993);
+  --chart-4: oklch(0.626 0.206 29.077);
+  --chart-5: oklch(0.596 0.25 303.897);
+
+  /* categorical — critical error types. Fixed order, never cycled.
+     --cat-compliance validated against the other three (all six checks,
+     all-pairs) via scripts/validate_palette.js from the dataviz skill.
+     Non-Critical is deliberately NOT in this set — it means "not critical"
+     and renders as plain --muted-foreground, the same way "No critical
+     errors" already does, rather than earning its own hue in this legend. */
+  --cat-customer: #114fb4;
+  --cat-process: #b0570d;
+  --cat-business: #b0348a;
+  --cat-compliance: #127a52;
+
+  /* semantic status — reserved, never reused as a series hue.
+     Each of these is painted as *text* on its own -surface token (the status
+     pills in every table). At the theme's original lightnesses that pairing
+     measured 2.75 / 3.36 / 4.15 — all under AA, the green badly so. The three
+     foregrounds are re-stepped here against their own surfaces; the surfaces
+     are unchanged, so the pills keep their colour identity. */
+  --status-good: #1A7B52;
+  --status-good-surface: oklch(0.96 0.03 148.495);
+  --status-warn: #96631A;
+  --status-warn-surface: oklch(0.97 0.035 83.993);
+  --status-critical: #BC2429;
+  --status-critical-surface: oklch(0.96 0.03 29.013);
+
+  /* sidebar — white with a filled-blue active pill */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1E2733;
+  --sidebar-primary: #2274C2;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E7F0FA;
+  --sidebar-accent-foreground: #175C99;
+  --sidebar-border: #E7ECF3;
+  --sidebar-ring: #2274C2;
+
+  /* Native UA widgets — scrollbars, date pickers, spinners, autofill — take
+     their colours from this and nothing else. Without it, `<input type="date">`
+     renders its light-mode calendar popup and black picker glyph on top of the
+     dark navy surfaces. Set per mode; everything native follows. */
+  color-scheme: light;
+
+  /* typography & metrics */
+  --font-sans: 'Google Sans', 'Roboto', 'Inter', system-ui, sans-serif;
+  --font-serif: 'Roboto Serif', Georgia, serif;
+  --font-mono: 'Roboto Mono', 'SFMono-Regular', ui-monospace, monospace;
+  /* Was 1rem. At that base `--radius-md` resolved to 14px, which on a 34px-tall
+     button is 82% of a pill — every control in the app read as a lozenge and
+     nothing stepped. 0.75rem gives a real 8/10/12/16 progression instead. */
+  --radius: 0.75rem;
+  --spacing: 0.25rem;
+  /* Was 0.01em globally. Positive tracking on 11–13px UI text is what made the
+     dense tables feel loose; headings get negative tracking in @layer base. */
+  --letter-spacing: 0em;
+
+  /* Elevation. The theme always declared --shadow-* parts but nothing ever
+     composed them into a usable value, so every `shadow-sm` / `shadow-lg` in
+     the app fell through to Tailwind's stock neutral-black ramp: a grey smudge
+     on the blue-white light surfaces, and nearly invisible on dark. These four
+     steps are the real ramp, tinted to the surface they sit on and redefined
+     under .dark so one utility is correct in both modes. */
+  --shadow-color: 30 58 93; /* #1E3A5D as space-separated rgb, for rgb(… / α) */
+  --elev-1: 0 1px 2px -1px rgb(var(--shadow-color) / 0.1), 0 1px 3px 0 rgb(var(--shadow-color) / 0.06);
+  --elev-2: 0 4px 12px -2px rgb(var(--shadow-color) / 0.1), 0 2px 6px -2px rgb(var(--shadow-color) / 0.06);
+  --elev-3: 0 12px 32px -8px rgb(var(--shadow-color) / 0.18), 0 4px 10px -4px rgb(var(--shadow-color) / 0.08);
+  --elev-4: 0 24px 56px -16px rgb(var(--shadow-color) / 0.24), 0 8px 18px -8px rgb(var(--shadow-color) / 0.1);
+
+  /* Surfaces that sit *on* a card — segmented-control troughs, chart plot
+     backgrounds, zebra rows. --muted is the fill; this is the hairline that
+     separates two adjacent muted areas without a full --border. */
+  --surface-sunken: #EDF2F8;
+  --hairline: color-mix(in oklch, var(--border) 60%, transparent);
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* "Portail" dark in blue — a deep navy-slate desk. Same shades as the green
+     dark set (matching lightness), hue-rotated green→blue. Values only. */
+  --background: #0F1722;
+  --foreground: #E7ECF2;
+  --card: #16232F;
+  --card-foreground: #E7ECF2;
+  --popover: #16232F;
+  --popover-foreground: #E7ECF2;
+
+  --primary: #3B9BE0;
+  --primary-foreground: #06182B;
+  --secondary: #1B2A38;
+  --secondary-foreground: #E7ECF2;
+  --accent: #1B2A38;
+  --accent-foreground: #8FC6EC;
+  --muted: #17242F;
+  --muted-foreground: #8C99A8;
+
+  --destructive: oklch(0.745 0.127 25.829);
+  --destructive-foreground: oklch(0.325 0.109 28.011);
+
+  --border: #24384A;
+  /* Kept clearly lighter than --card so input borders stay visible on dark
+     card surfaces (the fix we made earlier), now in the blue palette. */
+  --input: #34506A;
+  --ring: #3B9BE0;
+
+  --chart-1: oklch(0.766 0.108 259.793);
+  --chart-2: oklch(0.774 0.104 152.195);
+  --chart-3: oklch(0.918 0.103 91.29);
+  --chart-4: oklch(0.745 0.127 25.829);
+  --chart-5: oklch(0.814 0.114 308.335);
+
+  /* dark categorical — re-stepped against the #131314 surface, not inverted */
+  --cat-customer: #5b93e6;
+  --cat-process: #bd7d28;
+  --cat-business: #c968ae;
+  --cat-compliance: #4aa878;
+
+  --status-good: oklch(0.774 0.104 152.195);
+  --status-good-surface: oklch(0.28 0.05 152.195);
+  --status-warn: oklch(0.83 0.1 91.29);
+  --status-warn-surface: oklch(0.29 0.05 91.29);
+  --status-critical: oklch(0.745 0.127 25.829);
+  --status-critical-surface: oklch(0.28 0.06 25.829);
+
+  --sidebar: #142230;
+  --sidebar-foreground: #E7ECF2;
+  --sidebar-primary: #3B9BE0;
+  --sidebar-primary-foreground: #06182B;
+  --sidebar-accent: #1B2A38;
+  --sidebar-accent-foreground: #8FC6EC;
+  --sidebar-border: #24384A;
+  --sidebar-ring: #3B9BE0;
+
+  /* On dark surfaces a shadow reads as absence of light, not as a tinted
+     smudge — so it goes to true black and much deeper, or the card edges
+     disappear into the background entirely. */
+  --shadow-color: 0 0 0;
+  --elev-1: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 1px 3px 0 rgb(0 0 0 / 0.34);
+  --elev-2: 0 4px 12px -2px rgb(0 0 0 / 0.55), 0 2px 6px -2px rgb(0 0 0 / 0.4);
+  --elev-3: 0 12px 32px -8px rgb(0 0 0 / 0.66), 0 4px 10px -4px rgb(0 0 0 / 0.45);
+  --elev-4: 0 24px 56px -16px rgb(0 0 0 / 0.72), 0 8px 18px -8px rgb(0 0 0 / 0.5);
+
+  --surface-sunken: #121D28;
+  --hairline: color-mix(in oklch, var(--border) 70%, transparent);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-cat-customer: var(--cat-customer);
+  --color-cat-process: var(--cat-process);
+  --color-cat-business: var(--cat-business);
+  --color-cat-compliance: var(--cat-compliance);
+
+  --color-status-good: var(--status-good);
+  --color-status-warn: var(--status-warn);
+  --color-status-critical: var(--status-critical);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-surface-sunken: var(--surface-sunken);
+  --color-hairline: var(--hairline);
+
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+
+  /* 8 / 10 / 12 / 16 / 20 — a real step at every size. `inline` matters here:
+     it keeps the calc() referencing --radius at use time, so overriding
+     --radius on a subtree still re-scales the whole set. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  /* Every shadow utility now resolves through the mode-aware ramp above.
+     This is what makes `shadow-sm` correct in both themes without a single
+     `dark:` variant anywhere in the app. */
+  --shadow-2xs: var(--elev-1);
+  --shadow-xs: var(--elev-1);
+  --shadow-sm: var(--elev-1);
+  --shadow-md: var(--elev-2);
+  --shadow-lg: var(--elev-3);
+  --shadow-xl: var(--elev-4);
+  --shadow-2xl: var(--elev-4);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    letter-spacing: var(--letter-spacing);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Optical correction: type needs progressively tighter tracking as it grows.
+     Applied by size rather than by tag so a 21px <h1> and a 21px <div> match. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.014em;
+  }
+  h1 {
+    letter-spacing: -0.021em;
+  }
+
+  /* Digits must line up in every table and score column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* One focus treatment for the whole app. Keyboard users get a visible
+     2px ring with a background-coloured gap so it reads on any surface;
+     pointer users never see it. Both modes use --ring, which is already
+     re-toned per theme. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 26%, transparent);
+    color: var(--foreground);
+  }
+
+  /* Text controls. The app has ~40 inline <input>/<textarea> elements written
+     across ten screens, and they had drifted into twelve different class
+     strings — four different heights, and only two of them with any focus
+     style at all. Rather than a find-and-replace over every call site, the
+     focus treatment lives here: it is a base-layer rule, so any component that
+     wants something different still wins with a utility class, but nothing has
+     to opt in to being focusable-looking. */
+  input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+  textarea,
+  select {
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):focus,
+  textarea:focus,
+  select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 18%, transparent);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+  }
+  /* aria-invalid is set by the form screens; it had no visual consequence. */
+  [aria-invalid='true'] {
+    border-color: var(--destructive);
+  }
+  [aria-invalid='true']:focus {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 20%, transparent);
+  }
+
+  /* Scrollbars. The default WebKit bar is a hard grey slab that sits badly on
+     both the light blue and the dark navy; `color-scheme` fixes the Firefox /
+     overlay case, this fixes the classic WebKit one. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--foreground) 20%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground) 34%, transparent);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Chrome paints autofilled fields with a hardcoded pale-yellow/white that
+     ignores every token — the one place dark mode reliably breaks on a form.
+     There is no property to restyle it, so the fill is pushed off-screen with
+     an inset shadow and the caret/text colour is forced back. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--foreground);
+    -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+    caret-color: var(--foreground);
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  /* The native date picker's glyph is a black bitmap; `color-scheme: dark`
+     handles most browsers, this covers the WebKit indicator explicitly so the
+     audits page date inputs are legible on the navy surface. */
+  ::-webkit-calendar-picker-indicator {
+    opacity: 0.55;
+    cursor: pointer;
+  }
+  ::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Travelling sheen for <Skeleton>. A plain opacity pulse is nearly invisible
+   against the dark card, so the placeholder is a moving highlight instead. */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

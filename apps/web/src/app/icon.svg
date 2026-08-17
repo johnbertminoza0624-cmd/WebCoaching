@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Same artwork as components/brand/logo-mark.tsx, with the primary and
+       primary-foreground theme tokens resolved to their light-mode values. A
+       favicon is painted by the browser chrome, where none of the app's CSS
+       variables exist, so the two files cannot share a source. Keep in step.
+
+       NOTE: this file is parsed as strict XML, where a double hyphen is
+       illegal inside a comment. Naming the tokens with their CSS prefix here
+       silently broke the whole file and the tab fell back to the default
+       icon, so refer to them without it. -->
+  <defs>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.26" />
+      <stop offset="62%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="9" fill="#2274C2" />
+  <rect width="32" height="32" rx="9" fill="url(#sheen)" />
+  <path
+    d="M8.8 16.6 L13.5 21.3 L23.4 9.6"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="3.1"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

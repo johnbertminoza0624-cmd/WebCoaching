@@ -1,0 +1,6 @@
+{
+  "name": "@awr/ui",
+  "version": "0.1.0",
+  "private": true,
+  "exports": { "./theme.css": "./src/theme.css", "./styles": "./src/theme.css" }
+}

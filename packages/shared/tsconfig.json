@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": "src" },
+  "include": ["src/**/*"],
+  "//": "Tests are excluded from the published build — dist is what apps import, and it should not carry test code or a vitest dependency.",
+  "exclude": ["src/**/*.test.ts"]
+}

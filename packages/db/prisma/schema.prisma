@@ -1,0 +1,719 @@
+// AWR Quality Coaching Platform — data model
+//
+// Design notes:
+//  * Form definitions are VERSIONED (the workbook is already on "v1.3 S 2025").
+//    A submitted audit snapshots the parameter text and weight it was scored
+//    against, so re-weighting the template never silently rewrites history.
+//  * Reference lists (dispositions, call reasons, hold reasons, root-cause gaps)
+//    are tables, not enums — the roster and lists visibly churn in the workbook.
+//  * Roles are an enum: they are load-bearing in code (guards, scoping) and a
+//    new one is a deploy, not a row.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ORG STRUCTURE
+// ============================================================
+
+/// A line of business / client program, e.g. "AWR Care and Claims".
+model Account {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams     Team[]
+  users     User[]
+  templates FormTemplate[]
+
+  @@map("accounts")
+}
+
+/// An ops team. `leadId` is the Ops Team Lead who signs as supervisor.
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  wave      String?
+  accountId String
+  leadId    String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  lead    User?   @relation("TeamLead", fields: [leadId], references: [id], onDelete: SetNull)
+  members User[]  @relation("TeamMembers")
+
+  @@unique([accountId, name])
+  @@index([leadId])
+  @@map("teams")
+}
+
+// ============================================================
+// IDENTITY & ACCESS
+// ============================================================
+
+enum Role {
+  AGENT
+  OPS_TEAM_LEAD
+  QA
+  QA_TEAM_LEAD
+  OPS_ACCOUNT_MANAGER
+  QA_MANAGER
+  SERVICE_DELIVERY_MANAGER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  eid          String?    @unique /// employee ID from the roster
+  firstName    String
+  lastName     String
+  passwordHash String?    /// null while an invite is outstanding, or under SSO
+  role         Role       @default(AGENT)
+  status       UserStatus @default(ACTIVE)
+
+  accountId String?
+  teamId    String?
+
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deactivatedAt      DateTime?
+
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  team      Team?    @relation("TeamMembers", fields: [teamId], references: [id], onDelete: SetNull)
+  leadsTeam Team[]   @relation("TeamLead")
+
+  signatures      Signature[]
+  refreshTokens   RefreshToken[]
+  auditedForms    CoachingForm[] @relation("FormAuditor")
+  receivedForms   CoachingForm[] @relation("FormAgent")
+  supervisedForms CoachingForm[] @relation("FormSupervisor")
+  formSignatures  FormSignature[]
+  ownedActions    ActionPlanItem[]
+  activityLog     ActivityLog[]   @relation("ActorLog")
+  roleChanges     RoleChange[]    @relation("RoleChangeTarget")
+  roleChangesMade RoleChange[]    @relation("RoleChangeActor")
+
+  authoredTemplates    FormTemplate[]      @relation("TemplateAuthor")
+  templateChangesMade  TemplateChangeLog[] @relation("TemplateChangeActor")
+  formChangesMade      FormChangeLog[]     @relation("FormChangeActor")
+
+  @@index([accountId, role])
+  @@index([teamId])
+  @@index([status])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// Every role switch is recorded. Admin actions on identity must be reviewable.
+model RoleChange {
+  id        String   @id @default(cuid())
+  userId    String
+  actorId   String
+  fromRole  Role
+  toRole    Role
+  reason    String?
+  createdAt DateTime @default(now())
+
+  user  User @relation("RoleChangeTarget", fields: [userId], references: [id], onDelete: Cascade)
+  actor User @relation("RoleChangeActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("role_changes")
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String /// "form.submitted", "user.role_changed", "form.voided"
+  entityType String
+  entityId   String
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("ActorLog", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("activity_log")
+}
+
+// ============================================================
+// REFERENCE LISTS  (the workbook's `Reference` sheet)
+// ============================================================
+
+model Disposition {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  sortOrder Int    @default(0)
+  isActive Boolean @default(true)
+
+  callReasons CallReason[]
+
+  @@map("dispositions")
+}
+
+model CallReason {
+  id            String  @id @default(cuid())
+  dispositionId String
+  name          String
+  sortOrder     Int     @default(0)
+  isActive      Boolean @default(true)
+
+  disposition Disposition    @relation(fields: [dispositionId], references: [id], onDelete: Cascade)
+  forms       CoachingForm[]
+
+  @@unique([dispositionId, name])
+  @@map("call_reasons")
+}
+
+model HoldReason {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  attempts HoldAttempt[]
+
+  @@map("hold_reasons")
+}
+
+/// The "Gap" list — root causes selected in section C.
+model RootCauseGap {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  rootCauses RootCause[]
+
+  @@map("root_cause_gaps")
+}
+
+/// CSAT observed drivers, scoped by disposition (the INDIRECT cascade).
+model ObservedDriver {
+  id        String  @id @default(cuid())
+  name      String
+  category  String /// "Soft Skills" | "Process Restrictions" | ...
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  forms CoachingForm[]
+
+  @@unique([category, name])
+  @@map("observed_drivers")
+}
+
+// ============================================================
+// FORM TEMPLATE (versioned)
+// ============================================================
+
+enum CriticalType {
+  CUSTOMER
+  PROCESS
+  BUSINESS
+  COMPLIANCE
+  /// Not a critical severity at all — a best-practice parameter whose
+  /// failure is tracked but never counted toward "critical errors".
+  NON_CRITICAL
+}
+
+enum TemplateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// THE COACHING FORM REPOSITORY.
+///
+/// The platform is not Care-and-Claims-only: each program has its own form.
+/// A template with `accountId = null` is GLOBAL — available to every account
+/// (e.g. a shared "Generic Voice Audit"). QA, QA Managers and Admins pick one
+/// when starting an audit; only PUBLISHED templates are selectable.
+model FormTemplate {
+  id          String         @id @default(cuid())
+  /// Stable identity across versions: "awr-care-claims", "awr-billing".
+  slug        String
+  name        String
+  description String?        @db.Text
+  version     String /// "1.3 S 2025"
+  status      TemplateStatus @default(DRAFT)
+
+  /// null = available to every account.
+  accountId     String?
+  /// Free-text program label shown in the repository list.
+  lineOfBusiness String?
+  createdById    String?
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  /// Fixed acknowledgement copy shown in section E.
+  agentAckText      String @db.Text
+  supervisorAckText String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account    Account?            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdBy  User?               @relation("TemplateAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  parameters TemplateParameter[]
+  forms      CoachingForm[]
+  changeLog  TemplateChangeLog[]
+
+  /// Version is unique per template family, not per account — a global template
+  /// has a null accountId and Postgres treats nulls as distinct, so an
+  /// (accountId, version) key would let duplicates through.
+  @@unique([slug, version])
+  @@index([status, accountId])
+  @@index([slug])
+  @@map("form_templates")
+}
+
+/// Every edit to a template, field by field. Answers "who changed the weight on
+/// parameter 4, when, and what was it before".
+model TemplateChangeLog {
+  id         String   @id @default(cuid())
+  templateId String
+  actorId    String?
+  /// "template.renamed", "parameter.weight_changed", "parameter.added",
+  /// "parameter.removed", "template.published", "template.archived"
+  action     String
+  /// Null for template-level changes.
+  parameterId String?
+  field       String?
+  oldValue    String? @db.Text
+  newValue    String? @db.Text
+  note        String? @db.Text
+  createdAt   DateTime @default(now())
+
+  template FormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  actor    User?        @relation("TemplateChangeActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([templateId, createdAt])
+  @@map("template_change_log")
+}
+
+model TemplateParameter {
+  id           String       @id @default(cuid())
+  templateId   String
+  sortOrder    Int
+  criticalType CriticalType
+  text         String       @db.Text
+  /// Stored as a fraction: 0.20 renders as 20%. Weights must total 1.0000.
+  weight       Decimal      @db.Decimal(6, 4)
+  isActive     Boolean      @default(true)
+
+  template FormTemplate            @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  results  FormParameterResult[]
+
+  @@unique([templateId, sortOrder])
+  @@map("template_parameters")
+}
+
+// ============================================================
+// COACHING FORM (one audited transaction)
+// ============================================================
+
+/// The Coaching workflow, in order.
+///
+///   QA_REVIEW -> RELEASED_TO_OPS -> OPS_COACHING
+///             -> RELEASED_TO_AGENT -> AWAITING_AGENT_SIGNATURE -> FINALIZED
+///
+/// A form's stage is the single fact that decides whose queue it sits in, and
+/// every dashboard metric is derived from it rather than from a separately
+/// maintained counter. Only the role that owns the current stage may advance it.
+///
+/// VOIDED sits outside the sequence: terminal, but never "completed", so it is
+/// excluded from both pending workload and completion-rate denominators.
+enum FormStatus {
+  QA_REVIEW
+  RELEASED_TO_OPS
+  OPS_COACHING
+  RELEASED_TO_AGENT
+  AWAITING_AGENT_SIGNATURE
+  FINALIZED
+  VOIDED
+}
+
+enum AnswerValue {
+  YES
+  NO
+  NA
+}
+
+enum RespondentCategory {
+  SAT
+  NEUTRAL
+  DSAT
+  NOT_SURVEYED
+}
+
+enum ControllableFlag {
+  AGENT_CONTROLLABLE
+  AGENT_NON_CONTROLLABLE
+}
+
+model CoachingForm {
+  id         String     @id @default(cuid())
+  reference  String     @unique @default(cuid()) /// short human-facing code
+  templateId String
+  /// A form is created by importing a row from the uploaded .xlsx audit file,
+  /// so it enters the workflow already scored and awaiting the QA's
+  /// observations — there is no pre-QA draft state.
+  status     FormStatus @default(QA_REVIEW)
+
+  // --- header ---
+  agentId       String
+  supervisorId  String? /// snapshotted at creation from the agent's team lead
+  auditorId     String
+  callDate      DateTime  @db.Date
+  auditDate     DateTime  @db.Date
+  callId        String
+  callReasonId  String?
+  /// Average handle time, in seconds. Durations are stored as ints, never as
+  /// times — arithmetic on a TIME column is a recurring source of bugs.
+  ahtSeconds       Int?
+  totalHoldSeconds Int @default(0)
+
+  // --- section A: operations-initiated findings ---
+  ivrAuthenticated     AnswerValue?
+  agentReverified      AnswerValue?
+  verifiedNonIvr       AnswerValue?
+  usedServiceCloud     AnswerValue?
+
+  // --- section A: CSAT ---
+  wasSurveyed        Boolean             @default(false)
+  surveyScore        Int? /// 1-5
+  respondentCategory RespondentCategory  @default(NOT_SURVEYED)
+  controllable       ControllableFlag?
+  observedDriverId   String?
+  customerVerbatim   String?             @db.Text
+
+  // --- scoring (denormalized for the dashboard; recomputed on every write) ---
+  qaScore               Decimal @db.Decimal(6, 4) @default(0)
+  customerCriticalCount Int     @default(0)
+  processCriticalCount  Int     @default(0)
+  businessCriticalCount Int     @default(0)
+
+  /// A coaching form stays editable at any point in its life, including after
+  /// signing. `revision` increments on every substantive edit, and any edit
+  /// made after a signature marks that signature superseded (see
+  /// FormSignature.supersededAt) so an acknowledgement can never silently
+  /// cover content the signer never saw.
+  revision    Int       @default(1)
+
+  // --- workflow stage timestamps ---
+  /// Stamped when the form ENTERS each stage. A null means the stage has not
+  /// been reached, so the timestamp for the current `status` is always when the
+  /// form arrived where it sits now — that is what stage aging measures from,
+  /// and the gaps between consecutive stamps give average time-in-stage.
+  ///
+  /// These are deliberately separate columns rather than a derived read over
+  /// `FormChangeLog`: the dashboard aggregates stage age across the whole
+  /// account, and replaying the change log per form would not hold up.
+  /// `FormChangeLog` remains the audit trail of *who* moved it and why.
+  qaReviewAt          DateTime  @default(now())
+  releasedToOpsAt     DateTime?
+  opsCoachingAt       DateTime?
+  releasedToAgentAt   DateTime?
+  awaitingSignatureAt DateTime?
+  finalizedAt         DateTime?
+
+  voidedAt    DateTime?
+  voidReason  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  template       FormTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  agent          User            @relation("FormAgent", fields: [agentId], references: [id], onDelete: Restrict)
+  supervisor     User?           @relation("FormSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  auditor        User            @relation("FormAuditor", fields: [auditorId], references: [id], onDelete: Restrict)
+  callReason     CallReason?     @relation(fields: [callReasonId], references: [id], onDelete: SetNull)
+  observedDriver ObservedDriver? @relation(fields: [observedDriverId], references: [id], onDelete: SetNull)
+
+  parameterResults FormParameterResult[]
+  holdAttempts     HoldAttempt[]
+  rootCauses       RootCause[]
+  actionPlan       ActionPlanItem[]
+  signatures       FormSignature[]
+  pdfExports       PdfExport[]
+  changeLog        FormChangeLog[]
+
+  @@index([agentId, callDate])
+  // Every role-based dashboard query is "my rows, grouped by stage", so each
+  // ownership column is indexed together with status rather than alone.
+  @@index([supervisorId, status])
+  @@index([auditorId, status])
+  @@index([agentId, status])
+  @@index([status, auditDate])
+  @@map("coaching_forms")
+}
+
+/// Every edit to a submitted coaching form, field by field.
+///
+/// This is what makes "editable at all times" safe: nothing is overwritten
+/// silently. The UI renders this as a per-form history, and an edit that lands
+/// after a signature is flagged `afterSignature = true`.
+model FormChangeLog {
+  id       String  @id @default(cuid())
+  formId   String
+  actorId  String?
+  revision Int /// the form's revision AFTER this change
+
+  /// "form.field_changed", "parameter.answer_changed", "hold.changed",
+  /// "rootcause.changed", "actionplan.changed", "form.status_changed",
+  /// "form.reopened", "form.voided"
+  action   String
+  /// Dotted path of what changed: "parameters.4.answer", "csat.surveyScore".
+  field    String?
+  oldValue String? @db.Text
+  newValue String? @db.Text
+  /// Required by the API when editing a COMPLETED form.
+  reason   String? @db.Text
+
+  /// True when this edit landed after at least one signature existed.
+  afterSignature Boolean @default(false)
+
+  ip        String?
+  createdAt DateTime @default(now())
+
+  form  CoachingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  actor User?        @relation("FormChangeActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([formId, createdAt])
+  @@index([actorId])
+  @@map("form_change_log")
+}
+
+/// One row per template parameter. Text and weight are SNAPSHOTTED so that
+/// editing the template later cannot retroactively change a scored audit.
+model FormParameterResult {
+  id          String       @id @default(cuid())
+  formId      String
+  parameterId String
+  sortOrder   Int
+  /// snapshot of the template at scoring time
+  textSnapshot   String       @db.Text
+  weightSnapshot Decimal      @db.Decimal(6, 4)
+  criticalType   CriticalType
+
+  answer           AnswerValue @default(YES)
+  observedBehavior String?     @db.Text
+  /// 0 when answer = NO, else weightSnapshot.
+  score            Decimal     @db.Decimal(6, 4) @default(0)
+
+  form      CoachingForm      @relation(fields: [formId], references: [id], onDelete: Cascade)
+  parameter TemplateParameter @relation(fields: [parameterId], references: [id], onDelete: Restrict)
+  rootCause RootCause?
+
+  @@unique([formId, sortOrder])
+  @@index([parameterId, answer])
+  @@map("form_parameter_results")
+}
+
+model HoldAttempt {
+  id           String  @id @default(cuid())
+  formId       String
+  attemptNo    Int /// 1,2,3 and 4 = "attempt #4 and onwards"
+  startAt      DateTime?
+  endAt        DateTime?
+  durationSeconds Int  @default(0)
+  holdReasonId String?
+  reasonValid  AnswerValue @default(NA)
+
+  form       CoachingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  holdReason HoldReason?  @relation(fields: [holdReasonId], references: [id], onDelete: SetNull)
+
+  @@unique([formId, attemptNo])
+  @@map("hold_attempts")
+}
+
+enum ImpactType {
+  CUSTOMER_IMPACTING
+  PROCESS_DEFECT
+  BUSINESS_IMPACTING
+  COMPLIANCE_IMPACTING
+  NO_IMPACT
+}
+
+/// Auto-generated for each failed parameter; the gap and priority are chosen by
+/// the coach.
+model RootCause {
+  id                String  @id @default(cuid())
+  formId            String
+  parameterResultId String? @unique
+  /// Set for the two synthetic rows: "CSAT Feedback" and "Critical Error Count".
+  syntheticSource   String?
+
+  situation         String?    @db.Text
+  behavior          String?    @db.Text
+  impact            ImpactType
+  coachingPriority  Int? /// 1-4, drives the SMART action plan
+  gapId             String?
+
+  form            CoachingForm         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  parameterResult FormParameterResult? @relation(fields: [parameterResultId], references: [id], onDelete: Cascade)
+  gap             RootCauseGap?        @relation(fields: [gapId], references: [id], onDelete: SetNull)
+  actionItem      ActionPlanItem?
+
+  @@unique([formId, coachingPriority])
+  @@index([formId])
+  @@map("root_causes")
+}
+
+enum ActionStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+model ActionPlanItem {
+  id          String       @id @default(cuid())
+  formId      String
+  rootCauseId String?      @unique
+  priority    Int
+  activity    String?      @db.Text
+  ownerId     String?
+  deadline    DateTime?    @db.Date
+  successMeasure String?   @db.Text
+  goal        String?      @db.Text
+  status      ActionStatus @default(OPEN)
+  completedAt DateTime?
+
+  form      CoachingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  rootCause RootCause?   @relation(fields: [rootCauseId], references: [id], onDelete: SetNull)
+  owner     User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@unique([formId, priority])
+  @@index([ownerId, status])
+  @@map("action_plan_items")
+}
+
+// ============================================================
+// SIGNATURES
+// ============================================================
+
+enum SignatureSource {
+  DRAWN
+  UPLOADED
+}
+
+/// A signature saved to a user's profile and reusable across forms.
+model Signature {
+  id        String          @id @default(cuid())
+  userId    String
+  source    SignatureSource
+  /// Object-storage key for the transparent PNG. Never a data URI in the DB —
+  /// these are large and would bloat every user query.
+  storageKey String
+  /// SHA-256 of the image bytes, so an applied signature can be proven unaltered.
+  contentHash String
+  width      Int
+  height     Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formSignatures FormSignature[]
+
+  @@index([userId, isActive])
+  @@map("signatures")
+}
+
+enum SignatoryRole {
+  AGENT
+  SUPERVISOR
+}
+
+/// A signature APPLIED to a form. This is the legal artifact: it captures who
+/// signed, when, from where, and a hash of the exact form content at that moment
+/// — so a later edit is detectable.
+model FormSignature {
+  id          String        @id @default(cuid())
+  formId      String
+  signerId    String
+  signerRole  SignatoryRole
+  signatureId String?
+  storageKey  String
+  contentHash String
+  /// SHA-256 of the serialized form at signing time.
+  formHash    String
+  /// The form's revision at signing time.
+  revision    Int           @default(1)
+  signedAt    DateTime      @default(now())
+  ip          String?
+  userAgent   String?
+  declined    Boolean       @default(false)
+  declineReason String?     @db.Text
+
+  /// Set when the form is edited after this signature was given. The signature
+  /// row is kept — it is evidence — but the form returns to PENDING for that
+  /// party, who must acknowledge the new revision. Nothing here is deleted.
+  supersededAt        DateTime?
+  supersededByChangeId String?
+
+  form      CoachingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  signer    User         @relation(fields: [signerId], references: [id], onDelete: Restrict)
+  signature Signature?   @relation(fields: [signatureId], references: [id], onDelete: SetNull)
+
+  /// Keyed by revision, not just role: when an edit supersedes a signature the
+  /// old row is retained and the re-signature is a new row at a new revision.
+  /// A plain (formId, signerRole) key would force the history to be destroyed.
+  @@unique([formId, signerRole, revision])
+  @@index([formId, signerRole, supersededAt])
+  @@index([signerId])
+  @@map("form_signatures")
+}
+
+model PdfExport {
+  id         String   @id @default(cuid())
+  formId     String
+  storageKey String
+  /// Hash of the form at render time — lets the UI show "PDF is out of date".
+  formHash   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  form CoachingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, createdAt])
+  @@map("pdf_exports")
+}

@@ -1,0 +1,23 @@
+{
+  "name": "awr-coaching",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @awr/db generate",
+    "db:migrate": "pnpm --filter @awr/db migrate",
+    "db:seed": "pnpm --filter @awr/db seed",
+    "db:studio": "pnpm --filter @awr/db studio",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "prettier": "^3.4.2"
+  }
+}

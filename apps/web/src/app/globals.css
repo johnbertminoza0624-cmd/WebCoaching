@@ -1,0 +1,12 @@
+/* The Google Remix Remix theme, with the four documented corrections. */
+@import '@awr/ui/theme.css';
+
+/* ── Calendar: square-with-rounded-edges day highlight ───────────────────────
+   The theme's --radius is 1rem (16px). Tailwind's rounded-md resolves to
+   calc(--radius-md) = calc(var(--radius) - 2px) = 14px. On a 32×32 px
+   day button that renders as a circle. We force all calendar day buttons
+   to 6px so selected/today/hover highlights look like soft squares, not pills.
+   The !important is intentional — it must beat the inline CVA class. */
+.rdp-day_button {
+  border-radius: 6px !important;
+}
