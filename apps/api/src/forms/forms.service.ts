@@ -81,6 +81,13 @@ export class FormsService {
           agent: { select: { id: true, firstName: true, lastName: true, eid: true } },
           supervisor: { select: { id: true, firstName: true, lastName: true } },
           auditor: { select: { id: true, firstName: true, lastName: true } },
+          callReason: {
+            select: {
+              id: true,
+              name: true,
+              disposition: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       this.prisma.coachingForm.count({ where }),
@@ -113,6 +120,13 @@ export class FormsService {
         agent: { select: { id: true, firstName: true, lastName: true, eid: true } },
         supervisor: { select: { id: true, firstName: true, lastName: true } },
         auditor: { select: { id: true, firstName: true, lastName: true } },
+        callReason: {
+          select: {
+            id: true,
+            name: true,
+            disposition: { select: { id: true, name: true } },
+          },
+        },
         parameterResults: { orderBy: { sortOrder: 'asc' } },
         holdAttempts: { orderBy: { attemptNo: 'asc' } },
         signatures: { where: { supersededAt: null, declined: false } },

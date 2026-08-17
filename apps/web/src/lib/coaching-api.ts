@@ -69,6 +69,8 @@ const hhmmss = (secs: number) =>
 
 /** The imported audit block, rebuilt from the API row. */
 function standardOf(f: ApiForm): Record<string, string> {
+  const dispo = f.callReason?.disposition?.name ?? '';
+  const reason = f.callReason?.name ?? '';
   return {
     'Agent Name': person(f.agent),
     'EID': f.agent?.eid ?? '',
@@ -76,8 +78,8 @@ function standardOf(f: ApiForm): Record<string, string> {
     'Quality Auditor': person(f.auditor),
     'Call Date': f.callDate?.slice(0, 10) ?? '',
     'Audit Date': f.auditDate?.slice(0, 10) ?? '',
-    'Disposition': '',
-    'Call Reason': '',
+    'Disposition': dispo,
+    'Call Reason': reason,
     'Call ID': f.callId,
     'AHT': hhmmss(f.ahtSeconds ?? 0),
     'Total Hold Time': hhmmss(f.totalHoldSeconds ?? 0),

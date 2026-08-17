@@ -531,6 +531,7 @@ async function seedCoachingForms(accountId: string, templateId: string): Promise
     return existing;
   }
 
+  const callReasons = await prisma.callReason.findMany();
   const agents = await prisma.user.findMany({ where: { role: Role.AGENT }, include: { team: true } });
   const auditors = await prisma.user.findMany({ where: { role: Role.QA } });
   const parameters = await prisma.templateParameter.findMany({
@@ -567,6 +568,7 @@ async function seedCoachingForms(accountId: string, templateId: string): Promise
     const agent = agents[Math.floor(rng() * agents.length)]!;
     const auditor = auditors[Math.floor(rng() * auditors.length)]!;
     const status = stages[Math.floor(rng() * stages.length)]!;
+    const callReason = callReasons.length ? callReasons[Math.floor(rng() * callReasons.length)]! : null;
 
     const callDate = new Date(2026, 7, 1 + Math.floor(rng() * 55));
     const auditDate = new Date(callDate.getTime() + 864e5);
@@ -617,6 +619,7 @@ async function seedCoachingForms(accountId: string, templateId: string): Promise
         callDate,
         auditDate,
         callId: String(90000000 + i * 7919),
+        callReasonId: callReason?.id ?? null,
         ahtSeconds: 180 + Math.floor(rng() * 1200),
         totalHoldSeconds: rng() > 0.5 ? Math.floor(rng() * 400) : 0,
         qaScore: possible > 0 ? earned / possible : 1,

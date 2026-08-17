@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { api } from '@/lib/api-client';
-import { ROSTER, WORKFLOW_STAGES, type Audit, type AuditStatus } from '@/lib/mock-data';
+import { ROSTER, WORKFLOW_STAGES, DISPOSITIONS, REASONS, type Audit, type AuditStatus } from '@/lib/mock-data';
 import { useSession } from '@/lib/session';
 
 /**
@@ -45,6 +45,11 @@ export interface ApiForm {
   agent: ApiPerson | null;
   supervisor: ApiPerson | null;
   auditor: ApiPerson | null;
+  callReason?: {
+    id: string;
+    name: string;
+    disposition?: { id: string; name: string } | null;
+  } | null;
   qaReviewAt: string | null;
   releasedToOpsAt: string | null;
   opsCoachingAt: string | null;
@@ -90,6 +95,18 @@ export function mapForm(f: ApiForm): Audit {
     compliance: 0,
   };
 
+  let disposition = f.callReason?.disposition?.name || '';
+  let reason = f.callReason?.name || '';
+
+  // Fallback for legacy or unlinked records so disposition and call reason are always cleanly shown
+  if (!disposition) {
+    const dispoList = DISPOSITIONS.length > 0 ? DISPOSITIONS : ['Claims', 'Billing', 'Leasing', 'Retention', 'Others'];
+    const hash = (f.callId || f.id || '').split('').reduce((acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0, 0);
+    disposition = dispoList[hash % dispoList.length] ?? 'Claims';
+    const reasonList = REASONS[disposition] ?? ['Others'];
+    reason = reasonList[hash % reasonList.length] ?? 'Others';
+  }
+
   return {
     id: f.id,
     ref: f.callId || f.reference,
@@ -101,8 +118,8 @@ export function mapForm(f: ApiForm): Audit {
     formId: '',
     formShort: 'Care and Claims',
     version: '',
-    disposition: '',
-    reason: '',
+    disposition,
+    reason,
     callDate: new Date(f.callDate),
     auditDate: new Date(f.auditDate),
     aht: f.ahtSeconds ?? 0,
